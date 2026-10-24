@@ -2,7 +2,10 @@
 " don't mix with grep or diff results. Each entry is a path, a line (or
 " range) and the comment. Saved as `path:line: comment` or
 " `path:start-end: comment`, one per line, with each further line of a
-" multi-line comment after it, tab-indented. The list's context is the scope
+" multi-line comment after it, tab-indented, then an `@anchor {json}` line:
+" the comment's lines and a few around them, as they were. Loading finds the
+" lines again when the file has changed since; a comment whose lines are
+" gone stays at its saved line, marked W. The list's context is the scope
 " (e.g. the branch) its unsaved comments are from, '' once saved.
 "
 " What paths are relative to, which buffers take comments, where saves go and
@@ -12,6 +15,10 @@
 
 let s:title = 'Review'
 let s:provider = {}
+" An anchor keeps a comment's first s:anchor_lines lines, and s:context
+" lines on either side
+let s:anchor_lines = 20
+let s:context = 2
 
 function! s:error(msg) abort
   echohl ErrorMsg
@@ -215,13 +222,18 @@ function! s:comments() abort
       let l:comment.start_line = l:item.lnum
       let l:comment.line = l:item.end_lnum
     endif
+    if l:item.type ==# 'W'
+      let l:comment.orphaned = 1
+    endif
     call add(l:comments, l:comment)
   endfor
   return l:comments
 endfunction
 
-" Public: the comments as {path, line, start_line?, body}, paths relative to
-" review#root(), for other plugins (e.g. to send them to an AI agent)
+" Public: the comments as {path, line, start_line?, body, orphaned?}, paths
+" relative to review#root(), for other plugins (e.g. to send them to an AI
+" agent). orphaned: its lines weren't found when it was loaded, so it is at
+" its saved line, which may be another one now.
 function! review#list() abort
   return s:find_id() ? s:comments() : []
 endfunction
@@ -229,6 +241,109 @@ endfunction
 " Public: empty the 'Review' list
 function! review#clear() abort
   call setqflist([], 'r', {'id': s:list_id(), 'items': [], 'context': ''})
+endfunction
+
+" The buffer's lines: the buffer's own if loaded (unsaved edits too), else
+" its file's; [] when it has neither
+function! s:lines(bufnr) abort
+  if bufloaded(a:bufnr)
+    return getbufline(a:bufnr, 1, '$')
+  endif
+  let l:file = fnamemodify(bufname(a:bufnr), ':p')
+  return filereadable(l:file) ? readfile(l:file) : []
+endfunction
+
+" What the comment on lines first-last is on, to find it again once the
+" file changes: {lines, before, after}, {} when the lines aren't there
+function! s:anchor(lines, first, last) abort
+  let l:first = a:first - 1
+  if l:first < 0 || l:first >= len(a:lines)
+    return {}
+  endif
+  let l:last = min([max([a:last, a:first]) - 1, l:first + s:anchor_lines - 1])
+  return {'lines': a:lines[l:first : l:last],
+        \ 'before': l:first > 0 ? a:lines[max([0, l:first - s:context]) : l:first - 1] : [],
+        \ 'after': a:lines[l:last + 1 : l:last + s:context]}
+endfunction
+
+" How many of the anchor's lines around it match at index i of lines
+function! s:context_score(lines, i, n, anchor) abort
+  let l:score = 0
+  let l:before = a:anchor.before
+  for l:k in range(len(l:before))
+    let l:j = a:i - len(l:before) + l:k
+    let l:score += l:j >= 0 && l:j < len(a:lines) && a:lines[l:j] ==# l:before[l:k]
+  endfor
+  let l:after = a:anchor.after
+  for l:k in range(len(l:after))
+    let l:j = a:i + a:n + l:k
+    let l:score += l:j < len(a:lines) && a:lines[l:j] ==# l:after[l:k]
+  endfor
+  return l:score
+endfunction
+
+" The line the anchor's lines start on in lines, 0 when they're gone. Where
+" they appear more than once, the one with the most matching lines around
+" it, then the nearest to lnum. Leading and trailing white space is ignored,
+" so reindenting doesn't lose a comment.
+function! s:find(lines, anchor, lnum) abort
+  let l:anchor = map(copy(a:anchor), 'map(copy(v:val), "trim(v:val)")')
+  let l:want = l:anchor.lines
+  let l:n = len(l:want)
+  if l:n == 0
+    return 0
+  endif
+  let l:lines = map(copy(a:lines), 'trim(v:val)')
+  let l:best = 0
+  let l:best_score = 0
+  for l:i in range(len(l:lines) - l:n + 1)
+    if l:lines[l:i] !=# l:want[0] || l:lines[l:i : l:i + l:n - 1] !=# l:want
+      continue
+    endif
+    " More matching context wins; the distance only breaks ties
+    let l:score = s:context_score(l:lines, l:i, l:n, l:anchor) * 1000000
+          \ - abs(l:i + 1 - a:lnum)
+    if !l:best || l:score > l:best_score
+      let l:best = l:i + 1
+      let l:best_score = l:score
+    endif
+  endfor
+  return l:best
+endfunction
+
+" Moves the loaded comments to where their anchored lines are now (anchors
+" lines up with the list, {} for a comment saved without one). One whose
+" lines are gone keeps its line, is marked W and keeps its anchor for the
+" next save. Returns [moved, not found].
+function! s:reanchor(anchors) abort
+  let l:items = s:items()
+  let l:files = {}
+  let l:moved = 0
+  let l:lost = 0
+  for l:i in range(len(l:items))
+    let l:anchor = get(a:anchors, l:i, {})
+    if empty(l:anchor)
+      continue
+    endif
+    let l:item = l:items[l:i]
+    if !has_key(l:files, l:item.bufnr)
+      let l:files[l:item.bufnr] = s:lines(l:item.bufnr)
+    endif
+    let l:lnum = s:find(l:files[l:item.bufnr], l:anchor, l:item.lnum)
+    if !l:lnum
+      let l:item.type = 'W'
+      let l:item.user_data = {'anchor': l:anchor}
+      let l:lost += 1
+    elseif l:lnum != l:item.lnum
+      if l:item.end_lnum > 0
+        let l:item.end_lnum += l:lnum - l:item.lnum
+      endif
+      let l:item.lnum = l:lnum
+      let l:moved += 1
+    endif
+  endfor
+  call setqflist([], 'r', {'id': s:list_id(), 'items': l:items})
+  return [l:moved, l:lost]
 endfunction
 
 " The given file, else a new save, timestamped so they sort
@@ -268,18 +383,35 @@ endfunction
 
 function! review#save(file) abort
   let l:file = s:save_file(a:file)
+  let l:items = s:items()
+  let l:comments = s:comments()
+  let l:files = {}
   let l:lines = []
-  for l:c in s:comments()
+  for l:i in range(len(l:comments))
+    let l:c = l:comments[l:i]
+    let l:item = l:items[l:i]
     let l:body = split(l:c.body, "\n", 1)
     call add(l:lines, l:c.path . ':'
           \ . (has_key(l:c, 'start_line') ? l:c.start_line . '-' : '') . l:c.line
           \ . ': ' . l:body[0])
     call extend(l:lines, map(l:body[1:], '"\t" . v:val'))
+    " An orphaned comment keeps the anchor it was loaded with: its lines
+    " may come back, and those at its line now aren't its
+    let l:anchor = get(get(l:item, 'user_data', {}), 'anchor', {})
+    if l:item.type !=# 'W' || empty(l:anchor)
+      if !has_key(l:files, l:item.bufnr)
+        let l:files[l:item.bufnr] = s:lines(l:item.bufnr)
+      endif
+      let l:anchor = s:anchor(l:files[l:item.bufnr], l:item.lnum, l:item.end_lnum)
+    endif
+    if !empty(l:anchor)
+      call add(l:lines, '@anchor ' . json_encode(l:anchor))
+    endif
   endfor
   call mkdir(fnamemodify(l:file, ':h'), 'p')
   call writefile(l:lines, l:file)
   call setqflist([], 'a', {'id': s:list_id(), 'context': ''})
-  echo 'Saved ' . len(l:lines) . ' review comments to ' . fnamemodify(l:file, ':~')
+  echo 'Saved ' . len(l:comments) . ' review comments to ' . fnamemodify(l:file, ':~')
 endfunction
 
 " Replaces the 'Review' list with the comments in the file
@@ -296,10 +428,24 @@ function! review#load(file) abort
   endif
   let l:prefix = s:prefix()
   let l:items = []
+  let l:anchors = []
   for l:line in readfile(l:file)
     " A tab-indented line continues the previous comment
     if l:line[0] ==# "\t" && !empty(l:items)
       let l:items[-1].text .= "\n" . l:line[1:]
+      continue
+    endif
+    " The previous comment's anchor; saves from before anchors have none
+    if l:line =~# '^@anchor ' && !empty(l:items)
+      try
+        let l:anchor = json_decode(l:line[len('@anchor '):])
+        if type(l:anchor) == v:t_dict && type(get(l:anchor, 'lines')) == v:t_list
+          let l:anchors[-1] = {'lines': l:anchor.lines,
+                \ 'before': get(l:anchor, 'before', []), 'after': get(l:anchor, 'after', [])}
+        endif
+      catch /^Vim\%((\a\+)\)\=:E\(474\|491\)/
+        " Not JSON: the comment loads where it was saved
+      endtry
       continue
     endif
     let l:m = matchlist(l:line, '^\(.\{-}\):\(\d\+\)\%(-\(\d\+\)\)\=: \(.*\)$')
@@ -312,7 +458,13 @@ function! review#load(file) abort
       let l:item.end_lnum = str2nr(l:m[3])
     endif
     call add(l:items, l:item)
+    call add(l:anchors, {})
   endfor
   call setqflist([], 'r', {'id': s:list_id(), 'items': l:items, 'context': ''})
+  let [l:moved, l:lost] = s:reanchor(l:anchors)
   call review#open()
+  redraw
+  echo 'Review comments: ' . len(l:items)
+        \ . (l:moved ? ', ' . l:moved . ' moved to where their lines are now' : '')
+        \ . (l:lost ? ', ' . l:lost . ' whose lines are gone (W)' : '')
 endfunction

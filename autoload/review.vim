@@ -165,7 +165,7 @@ function! review#edit(line1, line2, text) abort
   execute 'belowright' get(g:, 'review_comment_height', 10) . 'new'
   setlocal buftype=acwrite bufhidden=wipe noswapfile filetype=markdown
   execute 'file' fnameescape('review://comment/' . l:target.label)
-  let b:review_comment = {'item': l:target.item, 'list': s:list_id(), 'index': -1}
+  let b:review_comment = {'item': l:target.item, 'list': s:list_id(), 'index': -1, 'text': ''}
   if !empty(a:text)
     call setline(1, a:text)
   endif
@@ -190,15 +190,19 @@ function! s:write_comment() abort
     return
   endif
   let l:item = extend(copy(l:c.item), {'text': join(l:lines, "\n")})
-  " The 'Review' list may have been loaded over or cleared since
+  " The 'Review' list may have been loaded over, cleared or deleted from since
   let l:items = l:c.list == s:find_id() ? s:items() : []
-  if l:c.index < 0 || l:c.index >= len(l:items)
+  if get(get(l:items, l:c.index, {}), 'text', '') !=# l:c.text
+    let l:c.index = l:c.index < 0 ? -1 : index(map(copy(l:items), 'v:val.text'), l:c.text)
+  endif
+  if l:c.index < 0
     let l:c.list = s:list_id()
     let l:c.index = s:append(l:item)
   else
     let l:items[l:c.index] = l:item
     call setqflist([], 'r', {'id': l:c.list, 'items': l:items})
   endif
+  let l:c.text = l:item.text
   setlocal nomodified
   echo 'Review comments: ' . len(s:items())
 endfunction
@@ -208,6 +212,25 @@ function! review#open() abort
   let l:nr = getqflist({'id': s:list_id(), 'nr': 0}).nr
   execute 'silent chistory' l:nr
   copen
+endfunction
+
+" dd and visual d in a quickfix window: delete the comments on lines
+" line1-line2 when it shows the 'Review' list, otherwise do what keys do
+function! review#delete(line1, line2, keys) abort
+  let l:id = s:find_id()
+  if getwininfo(win_getid())[0].loclist || getqflist({'id': 0}).id != l:id || !l:id
+    execute 'normal!' a:keys
+    return
+  endif
+  let l:items = s:items()
+  if empty(l:items)
+    return
+  endif
+  call remove(l:items, a:line1 - 1, min([a:line2, len(l:items)]) - 1)
+  call setqflist([], 'r', {'id': l:id, 'items': l:items,
+        \ 'idx': max([1, min([a:line1, len(l:items)])])})
+  call cursor(a:line1, 1)
+  echo 'Review comments: ' . len(l:items)
 endfunction
 
 " Comments as {path, line, start_line?, body}, paths relative to the root

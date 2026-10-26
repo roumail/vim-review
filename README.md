@@ -13,7 +13,7 @@ grep or diff results.
 | Command | `<Plug>` mapping | What it does |
 | --- | --- | --- |
 | `:[range]Comment [text]` | `<Plug>(review-comment)` (normal and visual) | Add a comment on the line or range; prompts unless `text` is given. |
-| `:[range]Comment! [text]` | `<Plug>(review-comment-edit)` (normal and visual) | Write the comment in a markdown buffer split below (`g:review_comment_height`, default 10), starting with `text` if given, for longer or multi-line comments. `:w` adds it, writing again updates it, `:q!` before writing drops it. |
+| `:[range]CommentDraft [text]` | `<Plug>(review-comment-draft)` (normal and visual) | Write the comment in a markdown buffer split below (`g:review_comment_height`, default 10), starting with `text` if given, for longer or multi-line comments. `:w` adds it, writing again updates it, `:q!` before writing drops it. |
 | `:Comments` | | Open the `Review` list. In it, `dd` deletes the comment on the line (`3dd` three of them) and `d` in visual mode those selected. |
 | `:CommentsSave [file]` | | Write the comments, one per line, as `path:line: comment` or `path:start-end: comment`, the further lines of a multi-line comment after it, tab-indented, then its [anchor](#anchors). Without `file`, each save is a new file named for the time, `<YYYYmmdd-HHMMSS>.txt`, in the save directory. |
 | `:CommentsLoad [file]` | | Replace the `Review` list with the comments in the file, each moved to where its lines are now; without `file`, the latest save. `<Tab>` lists the saves, newest first, then files. |

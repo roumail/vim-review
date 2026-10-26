@@ -8,10 +8,10 @@ if exists('g:loaded_review')
 endif
 let g:loaded_review = 1
 
-" Comment on the line or range; prompts unless the comment is given. With !,
-" write it in a buffer (:w adds it)
-command! -bang -range -nargs=* Comment
-      \ call review#{<bang>0 ? 'edit' : 'add'}(<line1>, <line2>, <q-args>)
+" Comment on the line or range; prompts unless the comment is given
+command! -range -nargs=* Comment call review#add(<line1>, <line2>, <q-args>)
+" The same, written in a buffer (:w adds it)
+command! -range -nargs=* CommentDraft call review#edit(<line1>, <line2>, <q-args>)
 " Open the 'Review' list
 command! Comments call review#open()
 " Write the comments to a file (default: a new timestamped save) and load
@@ -21,8 +21,8 @@ command! -nargs=? -complete=customlist,review#complete_load CommentsLoad call re
 
 nnoremap <Plug>(review-comment) <Cmd>Comment<CR>
 xnoremap <Plug>(review-comment) :Comment<CR>
-nnoremap <Plug>(review-comment-edit) <Cmd>Comment!<CR>
-xnoremap <Plug>(review-comment-edit) :Comment!<CR>
+nnoremap <Plug>(review-comment-draft) <Cmd>CommentDraft<CR>
+xnoremap <Plug>(review-comment-draft) :CommentDraft<CR>
 
 " dd and visual d delete comments in the 'Review' list's window
 augroup review

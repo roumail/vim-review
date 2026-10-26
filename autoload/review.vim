@@ -207,7 +207,6 @@ function! s:write_comment() abort
   echo 'Review comments: ' . len(s:items())
 endfunction
 
-" Make the 'Review' list current and open it
 function! review#open() abort
   let l:nr = getqflist({'id': s:list_id(), 'nr': 0}).nr
   execute 'silent chistory' l:nr

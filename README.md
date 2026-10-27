@@ -12,8 +12,8 @@ grep or diff results.
 
 | Command | `<Plug>` mapping | What it does |
 | --- | --- | --- |
-| `:[range]Comment [text]` | `<Plug>(review-comment)` (normal and visual) | Add a comment on the line or range; prompts unless `text` is given. |
-| `:[range]CommentDraft [text]` | `<Plug>(review-comment-draft)` (normal and visual) | Write the comment in a markdown buffer split below (`g:review_comment_height`, default 10), starting with `text` if given, for longer or multi-line comments. `:w` adds it, writing again updates it, `:q!` before writing drops it. |
+| `:[range]Comment [text]` | `<Plug>(review-comment)` (normal and visual), which leaves `:Comment ` on the command line to finish | Add a comment on the line or range; prompts unless `text` is given. Leaving the prompt with `<Esc>` keeps what you typed: `:Comment` or `:CommentDraft` on the same lines goes on from it. |
+| `:[range]CommentDraft [text]` | `<Plug>(review-comment-draft)` (normal and visual) | Write the comment in a markdown buffer split below (`g:review_comment_height`, default 10), starting with `text` if given, else with what you left at the `:Comment` prompt on those lines, for longer or multi-line comments. `:w` adds it, writing again updates it, `:q!` before writing drops it. |
 | `:Comments` | | Open the `Review` list. In it, `dd` deletes the comment on the line (`3dd` three of them) and `d` in visual mode those selected. |
 | `:CommentsSave [file]` | | Write the comments, one per line, as `path:line: comment` or `path:start-end: comment`, the further lines of a multi-line comment after it, tab-indented. Its [anchors](#anchors) go in `<file>.anchors` beside it, so the file reads as plain comments. Without `file`, each save is a new file named for the time, `<YYYYmmdd-HHMMSS>.txt`, in the save directory. |
 | `:CommentsLoad [file]` | | Replace the `Review` list with the comments in the file, each moved to where its lines are now; without `file`, the latest save. `<Tab>` lists the saves, newest first, then files. |
@@ -36,6 +36,11 @@ the most matching lines around it, then the nearest to the saved line. A
 comment whose lines are gone stays at its saved line, marked `W` in
 `:Comments`, and keeps its anchor through later saves, so it is found again if
 its lines come back.
+
+To take a comment you're typing to an editor, change `Comment` to
+`CommentDraft` on the command line (`<C-b>` goes to its start) and press
+Enter: the draft starts with your text. A command line left with `<Esc>` is
+in the history, so `:<Up>` gets it back after you look something up.
 
 Apart from `dd` in the `Review` list, no keys are bound; bind the `<Plug>`
 mappings yourself, for example:

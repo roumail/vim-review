@@ -19,8 +19,10 @@ command! Comments call review#open()
 command! -nargs=? -complete=file CommentsSave call review#save(<q-args>)
 command! -nargs=? -complete=customlist,review#complete_load CommentsLoad call review#load(<q-args>)
 
-nnoremap <Plug>(review-comment) <Cmd>Comment<CR>
-xnoremap <Plug>(review-comment) :Comment<CR>
+" They leave :Comment on the command line to finish, as vim-prompts' :Ai;
+" turning it into :CommentDraft takes the text to an editor
+nnoremap <Plug>(review-comment) :<C-u>Comment<Space>
+xnoremap <Plug>(review-comment) :Comment<Space>
 nnoremap <Plug>(review-comment-draft) <Cmd>CommentDraft<CR>
 xnoremap <Plug>(review-comment-draft) :CommentDraft<CR>
 

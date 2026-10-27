@@ -140,13 +140,17 @@ function! s:append(item) abort
   return len(s:items()) - 1
 endfunction
 
+" Text typed at the prompt and left with <Esc>, by label, to start from when
+" commenting on those lines again
+let s:unsent = {}
+
 " Prompts for the comment unless text is given
 function! review#add(line1, line2, text) abort
   let l:target = s:target(a:line1, a:line2)
   if empty(l:target)
     return
   endif
-  let l:text = empty(a:text) ? input('Comment ' . l:target.label . ': ') : a:text
+  let l:text = empty(a:text) ? s:prompt(l:target.label) : a:text
   if empty(l:text)
     return
   endif
@@ -155,8 +159,33 @@ function! review#add(line1, line2, text) abort
   echo 'Review comments: ' . len(s:items())
 endfunction
 
+" The comment typed at the prompt; '' when left. What was typed is kept for
+" the next prompt on those lines, so you can look something up and go on.
+function! s:prompt(label) abort
+  let s:typed = get(s:unsent, a:label, '')
+  " CmdlineLeave is too late: <Esc> has emptied the line by then
+  augroup review_prompt
+    autocmd!
+    autocmd CmdlineChanged @ let s:typed = getcmdline()
+  augroup END
+  try
+    let l:text = input('Comment ' . a:label . ': ', s:typed)
+  finally
+    autocmd! review_prompt
+  endtry
+  if !empty(l:text) || empty(s:typed)
+    silent! call remove(s:unsent, a:label)
+  else
+    let s:unsent[a:label] = s:typed
+    redraw
+    echo 'Comment kept: :Comment or :CommentDraft on ' . a:label . ' goes on from it'
+  endif
+  return l:text
+endfunction
+
 " Writes the comment in a buffer instead of at the prompt, for longer or
-" multi-line ones: a split below, starting with the text if given. :w adds
+" multi-line ones: a split below, starting with the text if given, else
+" with what was left at the :Comment prompt on these lines. :w adds
 " the comment (writing again updates it), :q! drops an unwritten one.
 function! review#edit(line1, line2, text) abort
   let l:target = s:target(a:line1, a:line2)
@@ -167,8 +196,11 @@ function! review#edit(line1, line2, text) abort
   setlocal buftype=acwrite bufhidden=wipe noswapfile filetype=markdown
   execute 'file' fnameescape('review://comment/' . l:target.label)
   let b:review_comment = {'item': l:target.item, 'list': s:list_id(), 'index': -1, 'text': ''}
-  if !empty(a:text)
-    call setline(1, a:text)
+  " Else what was typed at the :Comment prompt on these lines and left
+  let l:text = empty(a:text) ? get(s:unsent, l:target.label, '') : a:text
+  silent! call remove(s:unsent, l:target.label)
+  if !empty(l:text)
+    call setline(1, l:text)
   endif
   setlocal nomodified
   augroup review_comment
@@ -462,14 +494,22 @@ function! review#load(file) abort
   let l:sidecar = {}
   if filereadable(l:file . '.anchors')
     for l:json in readfile(l:file . '.anchors')
-      let l:entry = json_decode(l:json)
-      let l:sidecar[l:entry.at] = get(l:sidecar, l:entry.at, []) + [l:entry.anchor]
+      try
+        let l:entry = json_decode(l:json)
+        let l:sidecar[l:entry.at] = get(l:sidecar, l:entry.at, []) + [l:entry.anchor]
+      catch
+        " Not an anchor: its comment loads where it was saved
+      endtry
     endfor
   endif
   for l:line in readfile(l:file)
     " A tab-indented line continues the previous comment
     if l:line[0] ==# "\t" && !empty(l:items)
       let l:items[-1].text .= "\n" . l:line[1:]
+      continue
+    endif
+    " An anchor inline, as saves had them before <file>.anchors
+    if l:line =~# '^@anchor '
       continue
     endif
     let l:m = matchlist(l:line, '^\(.\{-}\):\(\d\+\)\%(-\(\d\+\)\)\=: \(.*\)$')

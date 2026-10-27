@@ -17,6 +17,7 @@ grep or diff results.
 | `:Comments` | | Open the `Review` list. In it, `dd` deletes the comment on the line (`3dd` three of them) and `d` in visual mode those selected. |
 | `:CommentsSave [file]` | | Write the comments, one per line, as `path:line: comment` or `path:start-end: comment`, the further lines of a multi-line comment after it, tab-indented. Its [anchors](#anchors) go in `<file>.anchors` beside it, so the file reads as plain comments. Without `file`, each save is a new file named for the time, `<YYYYmmdd-HHMMSS>.txt`, in the save directory. |
 | `:CommentsLoad [file]` | | Replace the `Review` list with the comments in the file, each moved to where its lines are now; without `file`, the latest save. `<Tab>` lists the saves, newest first, then files. |
+| `:CommentsClear` | | Empty the `Review` list, as quitting Vim would. Saves are kept, so `:CommentsLoad` brings them back. |
 
 Paths are relative to the current directory, and saves go in a directory per
 current directory under `g:review_dir` (default `~/.vim/review`), unless a

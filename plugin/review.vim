@@ -18,6 +18,8 @@ command! Comments call review#open()
 " them back (default: the latest save)
 command! -nargs=? -complete=file CommentsSave call review#save(<q-args>)
 command! -nargs=? -complete=customlist,review#complete_load CommentsLoad call review#load(<q-args>)
+" Empty the 'Review' list; saves are kept
+command! CommentsClear call review#clear()
 
 " They leave :Comment on the command line to finish, as vim-prompts' :Ai;
 " turning it into :CommentDraft takes the text to an editor

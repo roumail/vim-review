@@ -2,8 +2,9 @@
 " don't mix with grep or diff results. Each entry is a path, a line (or
 " range) and the comment. Saved as `path:line: comment` or
 " `path:start-end: comment`, one per line, with each further line of a
-" multi-line comment after it, tab-indented, then an `@anchor {json}` line:
-" the comment's lines and a few around them, as they were. Loading finds the
+" multi-line comment after it, tab-indented. Beside it, `<file>.anchors` has
+" each comment's lines and a few around them, as they were (JSON, one per
+" line, not for reading). Loading finds the
 " lines again when the file has changed since; a comment whose lines are
 " gone stays at its saved line, marked W. The list's context is the scope
 " (e.g. the branch) its unsaved comments are from, '' once saved.
@@ -409,13 +410,14 @@ function! review#save(file) abort
   let l:comments = s:comments()
   let l:files = {}
   let l:lines = []
+  let l:anchors = []
   for l:i in range(len(l:comments))
     let l:c = l:comments[l:i]
     let l:item = l:items[l:i]
     let l:body = split(l:c.body, "\n", 1)
-    call add(l:lines, l:c.path . ':'
+    let l:key = l:c.path . ':'
           \ . (has_key(l:c, 'start_line') ? l:c.start_line . '-' : '') . l:c.line
-          \ . ': ' . l:body[0])
+    call add(l:lines, l:key . ': ' . l:body[0])
     call extend(l:lines, map(l:body[1:], '"\t" . v:val'))
     " An orphaned comment keeps the anchor it was loaded with: its lines
     " may come back, and those at its line now aren't its
@@ -427,11 +429,17 @@ function! review#save(file) abort
       let l:anchor = s:anchor(l:files[l:item.bufnr], l:item.lnum, l:item.end_lnum)
     endif
     if !empty(l:anchor)
-      call add(l:lines, '@anchor ' . json_encode(l:anchor))
+      call add(l:anchors, json_encode({'at': l:key, 'anchor': l:anchor}))
     endif
   endfor
   call mkdir(fnamemodify(l:file, ':h'), 'p')
   call writefile(l:lines, l:file)
+  " The anchors are not for reading, so they go beside the comments
+  if empty(l:anchors)
+    call delete(l:file . '.anchors')
+  else
+    call writefile(l:anchors, l:file . '.anchors')
+  endif
   call setqflist([], 'a', {'id': s:list_id(), 'context': ''})
   echo 'Saved ' . len(l:comments) . ' review comments to ' . fnamemodify(l:file, ':~')
 endfunction
@@ -451,23 +459,17 @@ function! review#load(file) abort
   let l:prefix = s:prefix()
   let l:items = []
   let l:anchors = []
+  let l:sidecar = {}
+  if filereadable(l:file . '.anchors')
+    for l:json in readfile(l:file . '.anchors')
+      let l:entry = json_decode(l:json)
+      let l:sidecar[l:entry.at] = get(l:sidecar, l:entry.at, []) + [l:entry.anchor]
+    endfor
+  endif
   for l:line in readfile(l:file)
     " A tab-indented line continues the previous comment
     if l:line[0] ==# "\t" && !empty(l:items)
       let l:items[-1].text .= "\n" . l:line[1:]
-      continue
-    endif
-    " The previous comment's anchor; saves from before anchors have none
-    if l:line =~# '^@anchor ' && !empty(l:items)
-      try
-        let l:anchor = json_decode(l:line[len('@anchor '):])
-        if type(l:anchor) == v:t_dict && type(get(l:anchor, 'lines')) == v:t_list
-          let l:anchors[-1] = {'lines': l:anchor.lines,
-                \ 'before': get(l:anchor, 'before', []), 'after': get(l:anchor, 'after', [])}
-        endif
-      catch /^Vim\%((\a\+)\)\=:E\(474\|491\)/
-        " Not JSON: the comment loads where it was saved
-      endtry
       continue
     endif
     let l:m = matchlist(l:line, '^\(.\{-}\):\(\d\+\)\%(-\(\d\+\)\)\=: \(.*\)$')
@@ -480,7 +482,9 @@ function! review#load(file) abort
       let l:item.end_lnum = str2nr(l:m[3])
     endif
     call add(l:items, l:item)
-    call add(l:anchors, {})
+    let l:key = l:m[1] . ':' . l:m[2] . (empty(l:m[3]) ? '' : '-' . l:m[3])
+    let l:found = get(l:sidecar, l:key, [])
+    call add(l:anchors, empty(l:found) ? {} : remove(l:found, 0))
   endfor
   call setqflist([], 'r', {'id': s:list_id(), 'items': l:items, 'context': ''})
   let [l:moved, l:lost] = s:reanchor(l:anchors)

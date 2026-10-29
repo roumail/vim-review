@@ -185,8 +185,9 @@ endfunction
 
 " Writes the comment in a buffer instead of at the prompt, for longer or
 " multi-line ones: a split below, starting with the text if given, else
-" with what was left at the :Comment prompt on these lines. :w adds
-" the comment (writing again updates it), :q! drops an unwritten one.
+" with what was left at the :Comment prompt on these lines. As a git commit
+" message: :w saves, closing the buffer adds the comment last saved, and an
+" empty one (or :q! before any :w) adds nothing.
 function! review#edit(line1, line2, text) abort
   let l:target = s:target(a:line1, a:line2)
   if empty(l:target)
@@ -195,7 +196,7 @@ function! review#edit(line1, line2, text) abort
   execute 'belowright' get(g:, 'review_comment_height', 10) . 'new'
   setlocal buftype=acwrite bufhidden=wipe noswapfile filetype=markdown
   execute 'file' fnameescape('review://comment/' . l:target.label)
-  let b:review_comment = {'item': l:target.item, 'list': s:list_id(), 'index': -1, 'text': ''}
+  let b:review_comment = {'item': l:target.item, 'text': ''}
   " Else what was typed at the :Comment prompt on these lines and left
   let l:text = empty(a:text) ? get(s:unsent, l:target.label, '') : a:text
   silent! call remove(s:unsent, l:target.label)
@@ -205,38 +206,30 @@ function! review#edit(line1, line2, text) abort
   setlocal nomodified
   augroup review_comment
     autocmd! * <buffer>
-    autocmd BufWriteCmd <buffer> call s:write_comment()
+    autocmd BufWriteCmd <buffer> call s:save_comment()
+    autocmd BufWipeout <buffer> call s:add_comment(getbufvar(str2nr(expand('<abuf>')), 'review_comment'))
   augroup END
   startinsert!
 endfunction
 
-" BufWriteCmd of the comment buffer: adds the comment, or updates the one
-" an earlier write added
-function! s:write_comment() abort
-  let l:c = b:review_comment
+" BufWriteCmd of the comment buffer: keeps the text, without trailing blank
+" lines, for when it closes
+function! s:save_comment() abort
   let l:lines = getline(1, '$')
   while !empty(l:lines) && l:lines[-1] =~# '^\s*$'
     call remove(l:lines, -1)
   endwhile
-  if empty(l:lines)
-    call s:error('empty comment, not added')
+  let b:review_comment.text = join(l:lines, "\n")
+  setlocal nomodified
+  echo empty(l:lines) ? 'Comment empty: closing adds nothing' : 'Comment saved: closing adds it'
+endfunction
+
+" BufWipeout of the comment buffer: adds the comment last saved
+function! s:add_comment(comment) abort
+  if empty(a:comment) || empty(a:comment.text)
     return
   endif
-  let l:item = extend(copy(l:c.item), {'text': join(l:lines, "\n")})
-  " The 'Review' list may have been loaded over, cleared or deleted from since
-  let l:items = l:c.list == s:find_id() ? s:items() : []
-  if get(get(l:items, l:c.index, {}), 'text', '') !=# l:c.text
-    let l:c.index = l:c.index < 0 ? -1 : index(map(copy(l:items), 'v:val.text'), l:c.text)
-  endif
-  if l:c.index < 0
-    let l:c.list = s:list_id()
-    let l:c.index = s:append(l:item)
-  else
-    let l:items[l:c.index] = l:item
-    call setqflist([], 'r', {'id': l:c.list, 'items': l:items})
-  endif
-  let l:c.text = l:item.text
-  setlocal nomodified
+  call s:append(extend(copy(a:comment.item), {'text': a:comment.text}))
   echo 'Review comments: ' . len(s:items())
 endfunction
 

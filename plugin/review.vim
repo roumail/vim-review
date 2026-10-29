@@ -10,7 +10,7 @@ let g:loaded_review = 1
 
 " Comment on the line or range; prompts unless the comment is given
 command! -range -nargs=* Comment call review#add(<line1>, <line2>, <q-args>)
-" The same, written in a buffer (:w adds it)
+" The same, written in a buffer (:w saves, closing it adds the comment)
 command! -range -nargs=* CommentDraft call review#edit(<line1>, <line2>, <q-args>)
 " Open the 'Review' list
 command! Comments call review#open()

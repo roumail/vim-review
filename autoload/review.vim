@@ -195,19 +195,60 @@ function! review#edit(line1, line2, text) abort
   " Else what was typed at the :Comment prompt on these lines and left
   let l:text = empty(a:text) ? get(s:unsent, l:target.label, '') : a:text
   silent! call remove(s:unsent, l:target.label)
-  call roumail_draft#open('review://comment/' . l:target.label,
-        \ empty(l:text) ? [] : [l:text], function('s:add_comment', [l:target.item]),
-        \ {'split': 'belowright ' . get(g:, 'review_comment_height', 10) . 'new',
-        \  'saved': 'Comment saved: closing adds it',
-        \  'empty': 'Comment empty: closing adds nothing'})
-  setlocal filetype=markdown
+  call s:draft(l:target.label, empty(l:text) ? [] : [l:text],
+        \ function('s:add_comment', [l:target.item]), 'adds')
   startinsert!
+endfunction
+
+" A draft for the comment on label, below; closing it with text saved calls
+" OnClose(text)
+function! s:draft(label, lines, OnClose, verb) abort
+  call roumail_draft#open('review://comment/' . a:label, a:lines, a:OnClose,
+        \ {'split': 'belowright ' . get(g:, 'review_comment_height', 10) . 'new',
+        \  'saved': 'Comment saved: closing ' . a:verb . ' it',
+        \  'empty': 'Comment empty: closing ' . a:verb . ' nothing'})
+  setlocal filetype=markdown
 endfunction
 
 " Adds the comment once its draft closes
 function! s:add_comment(item, text) abort
   call s:append(extend(copy(a:item), {'text': a:text}))
   echo 'Review comments: ' . len(s:items())
+endfunction
+
+" c in a quickfix window: the comment on line lnum in a draft, all of it,
+" which replaces it once saved and closed, when it shows the 'Review' list;
+" otherwise what keys do
+function! review#change(lnum, keys) abort
+  let l:id = s:find_id()
+  if getwininfo(win_getid())[0].loclist || getqflist({'id': 0}).id != l:id || !l:id
+    execute 'normal!' a:keys
+    return
+  endif
+  let l:items = s:items()
+  if a:lnum > len(l:items)
+    return
+  endif
+  let l:item = l:items[a:lnum - 1]
+  let l:label = fnamemodify(bufname(l:item.bufnr), ':~:.') . ':' . l:item.lnum
+        \ . (get(l:item, 'end_lnum', 0) > l:item.lnum ? '-' . l:item.end_lnum : '')
+  call s:draft(l:label, split(l:item.text, "\n", 1),
+        \ function('s:change_comment', [l:item]), 'changes')
+endfunction
+
+" Replaces the comment once its draft closes; if it was deleted meanwhile,
+" adds it back changed rather than lose the text
+function! s:change_comment(item, text) abort
+  let l:items = s:items()
+  let l:i = index(l:items, a:item)
+  if l:i < 0
+    call s:append(extend(copy(a:item), {'text': a:text}))
+    echo 'Comment no longer in the list: added again, changed'
+    return
+  endif
+  let l:items[l:i].text = a:text
+  call setqflist([], 'r', {'id': s:find_id(), 'items': l:items, 'idx': l:i + 1})
+  echo 'Comment changed'
 endfunction
 
 function! review#open() abort

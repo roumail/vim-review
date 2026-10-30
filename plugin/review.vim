@@ -37,9 +37,11 @@ xnoremap <Plug>(review-comment) :Comment<Space>
 nnoremap <Plug>(review-comment-draft) <Cmd>CommentDraft<CR>
 xnoremap <Plug>(review-comment-draft) :CommentDraft<CR>
 
-" dd and visual d delete comments in the 'Review' list's window
+" dd and visual d delete comments in the 'Review' list's window, c changes one
 augroup review
   autocmd!
+  autocmd FileType qf nnoremap <buffer> <silent> c
+        \ <Cmd>call review#change(line('.'), 'c')<CR>
   autocmd FileType qf nnoremap <buffer> <silent> dd
         \ <Cmd>call review#delete(line('.'), line('.') + v:count1 - 1, v:count1 . 'dd')<CR>
   autocmd FileType qf xnoremap <buffer> <silent> d

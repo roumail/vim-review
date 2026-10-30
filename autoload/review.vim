@@ -184,64 +184,29 @@ function! s:prompt(label) abort
 endfunction
 
 " Writes the comment in a buffer instead of at the prompt, for longer or
-" multi-line ones: a split below, starting with the text if given, else
-" with what was left at the :Comment prompt on these lines. As a git commit
-" message: :w saves, closing the buffer adds the comment last saved, and an
-" empty one (or :q! before any :w) adds nothing. Closing it never quits Vim.
+" multi-line ones: a draft (roumail/vim-draft) below, starting with the text
+" if given, else with what was left at the :Comment prompt on these lines.
+" Closing it adds the comment last saved.
 function! review#edit(line1, line2, text) abort
   let l:target = s:target(a:line1, a:line2)
   if empty(l:target)
     return
   endif
-  execute 'belowright' get(g:, 'review_comment_height', 10) . 'new'
-  setlocal buftype=acwrite bufhidden=wipe noswapfile filetype=markdown
-  execute 'file' fnameescape('review://comment/' . l:target.label)
-  let b:review_comment = {'item': l:target.item, 'text': ''}
   " Else what was typed at the :Comment prompt on these lines and left
   let l:text = empty(a:text) ? get(s:unsent, l:target.label, '') : a:text
   silent! call remove(s:unsent, l:target.label)
-  if !empty(l:text)
-    call setline(1, l:text)
-  endif
-  setlocal nomodified
-  augroup review_comment
-    autocmd! * <buffer>
-    autocmd BufWriteCmd <buffer> call s:save_comment()
-    autocmd QuitPre <buffer> call s:keep_vim()
-    autocmd BufWipeout <buffer> call s:add_comment(getbufvar(str2nr(expand('<abuf>')), 'review_comment'))
-  augroup END
+  call roumail_draft#open('review://comment/' . l:target.label,
+        \ empty(l:text) ? [] : [l:text], function('s:add_comment', [l:target.item]),
+        \ {'split': 'belowright ' . get(g:, 'review_comment_height', 10) . 'new',
+        \  'saved': 'Comment saved: closing adds it',
+        \  'empty': 'Comment empty: closing adds nothing'})
+  setlocal filetype=markdown
   startinsert!
 endfunction
 
-" BufWriteCmd of the comment buffer: keeps the text, without trailing blank
-" lines, for when it closes
-function! s:save_comment() abort
-  let l:lines = getline(1, '$')
-  while !empty(l:lines) && l:lines[-1] =~# '^\s*$'
-    call remove(l:lines, -1)
-  endwhile
-  let b:review_comment.text = join(l:lines, "\n")
-  setlocal nomodified
-  echo empty(l:lines) ? 'Comment empty: closing adds nothing' : 'Comment saved: closing adds it'
-endfunction
-
-" QuitPre of the comment buffer: when it is the last window, opens the file
-" commented on above it, so that closing the comment closes only its window
-" and the comment is added rather than lost with Vim
-function! s:keep_vim() abort
-  if len(getwininfo()) > 1
-    return
-  endif
-  execute 'aboveleft split' fnameescape(b:review_comment.item.filename)
-  wincmd p
-endfunction
-
-" BufWipeout of the comment buffer: adds the comment last saved
-function! s:add_comment(comment) abort
-  if empty(a:comment) || empty(a:comment.text)
-    return
-  endif
-  call s:append(extend(copy(a:comment.item), {'text': a:comment.text}))
+" Adds the comment once its draft closes
+function! s:add_comment(item, text) abort
+  call s:append(extend(copy(a:item), {'text': a:text}))
   echo 'Review comments: ' . len(s:items())
 endfunction
 

@@ -3,10 +3,19 @@
 " review#list() and can say where comments go with review#use() (git-extras
 " does, for git work trees). Commands and <Plug> mappings, and dd to delete
 " comments in the 'Review' list's window; no other keys are bound here.
+" Requires roumail/vim-draft, for :CommentDraft.
 if exists('g:loaded_review')
   finish
 endif
 let g:loaded_review = 1
+
+" Warns at startup when a required plugin isn't loaded (roumail/vim-requires)
+try
+  call roumail_requires#check('vim-review', {
+        \ 'roumail/vim-draft': 'g:loaded_roumail_draft',
+        \ })
+catch /^Vim\%((\a\+)\)\=:E117:/
+endtry
 
 " Comment on the line or range; prompts unless the comment is given
 command! -range -nargs=* Comment call review#add(<line1>, <line2>, <q-args>)

@@ -187,7 +187,7 @@ endfunction
 " multi-line ones: a split below, starting with the text if given, else
 " with what was left at the :Comment prompt on these lines. As a git commit
 " message: :w saves, closing the buffer adds the comment last saved, and an
-" empty one (or :q! before any :w) adds nothing.
+" empty one (or :q! before any :w) adds nothing. Closing it never quits Vim.
 function! review#edit(line1, line2, text) abort
   let l:target = s:target(a:line1, a:line2)
   if empty(l:target)
@@ -207,6 +207,7 @@ function! review#edit(line1, line2, text) abort
   augroup review_comment
     autocmd! * <buffer>
     autocmd BufWriteCmd <buffer> call s:save_comment()
+    autocmd QuitPre <buffer> call s:keep_vim()
     autocmd BufWipeout <buffer> call s:add_comment(getbufvar(str2nr(expand('<abuf>')), 'review_comment'))
   augroup END
   startinsert!
@@ -222,6 +223,17 @@ function! s:save_comment() abort
   let b:review_comment.text = join(l:lines, "\n")
   setlocal nomodified
   echo empty(l:lines) ? 'Comment empty: closing adds nothing' : 'Comment saved: closing adds it'
+endfunction
+
+" QuitPre of the comment buffer: when it is the last window, opens the file
+" commented on above it, so that closing the comment closes only its window
+" and the comment is added rather than lost with Vim
+function! s:keep_vim() abort
+  if len(getwininfo()) > 1
+    return
+  endif
+  execute 'aboveleft split' fnameescape(b:review_comment.item.filename)
+  wincmd p
 endfunction
 
 " BufWipeout of the comment buffer: adds the comment last saved

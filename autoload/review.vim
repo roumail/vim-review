@@ -16,9 +16,7 @@
 
 let s:title = 'Review'
 let s:provider = {}
-" An anchor keeps a comment's first s:anchor_lines lines, and s:context
-" lines on either side
-let s:anchor_lines = 20
+" An anchor holds up to 20 of a comment's lines, and this many on either side
 let s:context = 2
 
 function! s:error(msg) abort
@@ -129,8 +127,8 @@ function! s:target(line1, line2) abort
   if a:line2 != a:line1
     let l:item.end_lnum = a:line2
   endif
-  let l:range = a:line1 == a:line2 ? a:line1 : a:line1 . '-' . a:line2
-  return {'item': l:item, 'label': l:target.path . ':' . l:range}
+  return {'item': l:item,
+        \ 'label': l:target.path . ':' . a:line1 . (a:line1 == a:line2 ? '' : '-' . a:line2)}
 endfunction
 
 " Appends the item to the 'Review' list; returns its index in the list
@@ -150,37 +148,35 @@ function! review#add(line1, line2, text) abort
   if empty(l:target)
     return
   endif
-  let l:text = empty(a:text) ? s:prompt(l:target.label) : a:text
+  let l:text = a:text
   if empty(l:text)
-    return
+    " Kept for the next prompt on those lines, so you can look something up and
+    " go on
+    let s:typed = get(s:unsent, l:target.label, '')
+    " CmdlineLeave is too late: <Esc> has emptied the line by then
+    augroup review_prompt
+      autocmd!
+      autocmd CmdlineChanged @ let s:typed = getcmdline()
+    augroup END
+    try
+      let l:text = input('Comment ' . l:target.label . ': ', s:typed)
+    finally
+      autocmd! review_prompt
+    endtry
+    if !empty(l:text) || empty(s:typed)
+      silent! call remove(s:unsent, l:target.label)
+    else
+      let s:unsent[l:target.label] = s:typed
+      redraw
+      echo 'Comment kept: :Comment or :CommentDraft on ' . l:target.label . ' goes on from it'
+    endif
+    if empty(l:text)
+      return
+    endif
   endif
   call s:append(extend(l:target.item, {'text': l:text}))
   redraw
   echo 'Review comments: ' . len(s:items())
-endfunction
-
-" The comment typed at the prompt; '' when left. What was typed is kept for
-" the next prompt on those lines, so you can look something up and go on.
-function! s:prompt(label) abort
-  let s:typed = get(s:unsent, a:label, '')
-  " CmdlineLeave is too late: <Esc> has emptied the line by then
-  augroup review_prompt
-    autocmd!
-    autocmd CmdlineChanged @ let s:typed = getcmdline()
-  augroup END
-  try
-    let l:text = input('Comment ' . a:label . ': ', s:typed)
-  finally
-    autocmd! review_prompt
-  endtry
-  if !empty(l:text) || empty(s:typed)
-    silent! call remove(s:unsent, a:label)
-  else
-    let s:unsent[a:label] = s:typed
-    redraw
-    echo 'Comment kept: :Comment or :CommentDraft on ' . a:label . ' goes on from it'
-  endif
-  return l:text
 endfunction
 
 " Writes the comment in a buffer instead of at the prompt, for longer or
@@ -216,12 +212,13 @@ function! s:add_comment(item, text) abort
   echo 'Review comments: ' . len(s:items())
 endfunction
 
-" c in a quickfix window: the comment on line lnum in a draft, all of it,
-" which replaces it once saved and closed, when it shows the 'Review' list;
-" otherwise what keys do
-function! review#change(lnum, keys) abort
+function! s:shown_list_id() abort
   let l:id = s:find_id()
-  if getwininfo(win_getid())[0].loclist || getqflist({'id': 0}).id != l:id || !l:id
+  return !getwininfo(win_getid())[0].loclist && getqflist({'id': 0}).id == l:id ? l:id : 0
+endfunction
+
+function! review#change(lnum, keys) abort
+  if !s:shown_list_id()
     execute 'normal!' a:keys
     return
   endif
@@ -230,9 +227,9 @@ function! review#change(lnum, keys) abort
     return
   endif
   let l:item = l:items[a:lnum - 1]
-  let l:label = fnamemodify(bufname(l:item.bufnr), ':~:.') . ':' . l:item.lnum
-        \ . (get(l:item, 'end_lnum', 0) > l:item.lnum ? '-' . l:item.end_lnum : '')
-  call s:draft(l:label, split(l:item.text, "\n", 1),
+  call s:draft(fnamemodify(bufname(l:item.bufnr), ':~:.') . ':' . l:item.lnum
+        \ . (get(l:item, 'end_lnum', 0) > l:item.lnum ? '-' . l:item.end_lnum : ''),
+        \ split(l:item.text, "\n", 1),
         \ function('s:change_comment', [l:item]), 'changes')
 endfunction
 
@@ -252,16 +249,13 @@ function! s:change_comment(item, text) abort
 endfunction
 
 function! review#open() abort
-  let l:nr = getqflist({'id': s:list_id(), 'nr': 0}).nr
-  execute 'silent chistory' l:nr
+  execute 'silent chistory' getqflist({'id': s:list_id(), 'nr': 0}).nr
   copen
 endfunction
 
-" dd and visual d in a quickfix window: delete the comments on lines
-" line1-line2 when it shows the 'Review' list, otherwise do what keys do
 function! review#delete(line1, line2, keys) abort
-  let l:id = s:find_id()
-  if getwininfo(win_getid())[0].loclist || getqflist({'id': 0}).id != l:id || !l:id
+  let l:id = s:shown_list_id()
+  if !l:id
     execute 'normal!' a:keys
     return
   endif
@@ -311,123 +305,10 @@ function! s:lines(bufnr) abort
   return filereadable(l:file) ? readfile(l:file) : []
 endfunction
 
-" What the comment on lines first-last is on, to find it again once the
-" file changes: {lines, before, after}, {} when the lines aren't there
-function! s:anchor(lines, first, last) abort
-  let l:first = a:first - 1
-  if l:first < 0 || l:first >= len(a:lines)
-    return {}
-  endif
-  let l:last = min([max([a:last, a:first]) - 1, l:first + s:anchor_lines - 1])
-  return {'lines': a:lines[l:first : l:last],
-        \ 'before': l:first > 0 ? a:lines[max([0, l:first - s:context]) : l:first - 1] : [],
-        \ 'after': a:lines[l:last + 1 : l:last + s:context]}
-endfunction
-
-" How many of the anchor's lines around it match at index i of lines
-function! s:context_score(lines, i, n, anchor) abort
-  let l:score = 0
-  let l:before = a:anchor.before
-  for l:k in range(len(l:before))
-    let l:j = a:i - len(l:before) + l:k
-    let l:score += l:j >= 0 && l:j < len(a:lines) && a:lines[l:j] ==# l:before[l:k]
-  endfor
-  let l:after = a:anchor.after
-  for l:k in range(len(l:after))
-    let l:j = a:i + a:n + l:k
-    let l:score += l:j < len(a:lines) && a:lines[l:j] ==# l:after[l:k]
-  endfor
-  return l:score
-endfunction
-
-" The line the anchor's lines start on in lines, 0 when they're gone. Where
-" they appear more than once, the one with the most matching lines around
-" it, then the nearest to lnum. Leading and trailing white space is ignored,
-" so reindenting doesn't lose a comment.
-function! s:find(lines, anchor, lnum) abort
-  let l:anchor = map(copy(a:anchor), 'map(copy(v:val), "trim(v:val)")')
-  let l:want = l:anchor.lines
-  let l:n = len(l:want)
-  if l:n == 0
-    return 0
-  endif
-  let l:lines = map(copy(a:lines), 'trim(v:val)')
-  let l:best = 0
-  let l:best_score = 0
-  for l:i in range(len(l:lines) - l:n + 1)
-    if l:lines[l:i] !=# l:want[0] || l:lines[l:i : l:i + l:n - 1] !=# l:want
-      continue
-    endif
-    " More matching context wins; the distance only breaks ties
-    let l:score = s:context_score(l:lines, l:i, l:n, l:anchor) * 1000000
-          \ - abs(l:i + 1 - a:lnum)
-    if !l:best || l:score > l:best_score
-      let l:best = l:i + 1
-      let l:best_score = l:score
-    endif
-  endfor
-  return l:best
-endfunction
-
-" Moves the loaded comments to where their anchored lines are now (anchors
-" lines up with the list, {} for a comment saved without one). One whose
-" lines are gone keeps its line, is marked W and keeps its anchor for the
-" next save. Returns [moved, not found].
-function! s:reanchor(anchors) abort
-  let l:items = s:items()
-  let l:files = {}
-  let l:moved = 0
-  let l:lost = 0
-  for l:i in range(len(l:items))
-    let l:anchor = get(a:anchors, l:i, {})
-    if empty(l:anchor)
-      continue
-    endif
-    let l:item = l:items[l:i]
-    if !has_key(l:files, l:item.bufnr)
-      let l:files[l:item.bufnr] = s:lines(l:item.bufnr)
-    endif
-    let l:lnum = s:find(l:files[l:item.bufnr], l:anchor, l:item.lnum)
-    if !l:lnum
-      let l:item.type = 'W'
-      let l:item.user_data = {'anchor': l:anchor}
-      let l:lost += 1
-    elseif l:lnum != l:item.lnum
-      if l:item.end_lnum > 0
-        let l:item.end_lnum += l:lnum - l:item.lnum
-      endif
-      let l:item.lnum = l:lnum
-      let l:moved += 1
-    endif
-  endfor
-  call setqflist([], 'r', {'id': s:list_id(), 'items': l:items})
-  return [l:moved, l:lost]
-endfunction
-
-" The given file, else a new save, timestamped so they sort
-function! s:save_file(file) abort
-  if !empty(a:file)
-    return fnamemodify(a:file, ':p')
-  endif
-  return s:call('save_dir') . '/' . strftime('%Y%m%d-%H%M%S') . '.txt'
-endfunction
-
 " The save names (<time>.txt), newest first
 function! s:saves() abort
   return reverse(sort(map(glob(s:call('save_dir') . '/*.txt', 1, 1),
         \ 'fnamemodify(v:val, ":t")')))
-endfunction
-
-" The given file, else the latest save ('' when there is none). A bare save
-" name, as completed, is one of the saves.
-function! s:load_file(file) abort
-  if index(s:saves(), a:file) >= 0
-    return s:call('save_dir') . '/' . a:file
-  elseif !empty(a:file)
-    return fnamemodify(a:file, ':p')
-  endif
-  let l:saves = s:saves()
-  return empty(l:saves) ? '' : s:call('save_dir') . '/' . l:saves[0]
 endfunction
 
 " The saves, newest first; files once the arg looks like a path
@@ -440,7 +321,9 @@ function! review#complete_load(lead, cmdline, pos) abort
 endfunction
 
 function! review#save(file) abort
-  let l:file = s:save_file(a:file)
+  " Named for the time, so they sort
+  let l:file = empty(a:file) ? s:call('save_dir') . '/' . strftime('%Y%m%d-%H%M%S') . '.txt'
+        \ : fnamemodify(a:file, ':p')
   let l:items = s:items()
   let l:comments = s:comments()
   let l:files = {}
@@ -460,7 +343,13 @@ function! review#save(file) abort
       if !has_key(l:files, l:item.bufnr)
         let l:files[l:item.bufnr] = s:lines(l:item.bufnr)
       endif
-      let l:anchor = s:anchor(l:files[l:item.bufnr], l:item.lnum, l:item.end_lnum)
+      let l:source = l:files[l:item.bufnr]
+      let l:first = l:item.lnum - 1
+      let l:last = min([max([l:item.end_lnum, l:item.lnum]) - 1, l:first + 19])
+      let l:anchor = l:first < 0 || l:first >= len(l:source) ? {} : {
+            \ 'lines': l:source[l:first : l:last],
+            \ 'before': l:first > 0 ? l:source[max([0, l:first - s:context]) : l:first - 1] : [],
+            \ 'after': l:source[l:last + 1 : l:last + s:context]}
     endif
     if !empty(l:anchor)
       call add(l:anchors, json_encode({'at': l:key, 'anchor': l:anchor}))
@@ -480,7 +369,10 @@ endfunction
 
 " Replaces the 'Review' list with the comments in the file
 function! review#load(file) abort
-  let l:file = s:load_file(a:file)
+  let l:saves = s:saves()
+  let l:file = index(l:saves, a:file) >= 0 ? s:call('save_dir') . '/' . a:file
+        \ : !empty(a:file) ? fnamemodify(a:file, ':p')
+        \ : empty(l:saves) ? '' : s:call('save_dir') . '/' . l:saves[0]
   if empty(l:file)
     let l:scope = s:call('scope')
     call s:error('no saved comments' . (empty(l:scope) ? '' : ' for ' . l:scope))
@@ -490,7 +382,6 @@ function! review#load(file) abort
     call s:error('no review file ' . fnamemodify(l:file, ':~'))
     return
   endif
-  let l:prefix = s:prefix()
   let l:items = []
   let l:anchors = []
   let l:sidecar = {}
@@ -514,18 +405,69 @@ function! review#load(file) abort
     if empty(l:m)
       continue
     endif
-    let l:item = {'filename': l:prefix . l:m[1],
+    let l:item = {'filename': s:prefix() . l:m[1],
           \ 'lnum': str2nr(l:m[2]), 'text': l:m[4]}
     if !empty(l:m[3])
       let l:item.end_lnum = str2nr(l:m[3])
     endif
     call add(l:items, l:item)
-    let l:key = l:m[1] . ':' . l:m[2] . (empty(l:m[3]) ? '' : '-' . l:m[3])
-    let l:found = get(l:sidecar, l:key, [])
+    let l:found = get(l:sidecar, l:m[1] . ':' . l:m[2] . (empty(l:m[3]) ? '' : '-' . l:m[3]), [])
     call add(l:anchors, empty(l:found) ? {} : remove(l:found, 0))
   endfor
   call setqflist([], 'r', {'id': s:list_id(), 'items': l:items, 'context': ''})
-  let [l:moved, l:lost] = s:reanchor(l:anchors)
+
+  " Each comment to where its anchored lines are now. One whose lines are gone
+  " keeps its line, is marked W and keeps its anchor for the next save.
+  let l:items = s:items()
+  let l:trimmed = {}
+  let [l:moved, l:lost] = [0, 0]
+  for l:i in range(len(l:items))
+    let l:saved = get(l:anchors, l:i, {})
+    if empty(l:saved)
+      continue
+    endif
+    let l:item = l:items[l:i]
+    " Ignoring indentation, so reindenting doesn't lose a comment
+    let l:anchor = map(copy(l:saved), 'map(copy(v:val), "trim(v:val)")')
+    if !has_key(l:trimmed, l:item.bufnr)
+      let l:trimmed[l:item.bufnr] = map(s:lines(l:item.bufnr), 'trim(v:val)')
+    endif
+    let l:lines = l:trimmed[l:item.bufnr]
+    let l:n = len(l:anchor.lines)
+    let [l:lnum, l:best] = [0, 0]
+    for l:at in range(l:n ? max([0, len(l:lines) - l:n + 1]) : 0)
+      if l:lines[l:at : l:at + l:n - 1] !=# l:anchor.lines
+        continue
+      endif
+      let l:score = 0
+      for l:k in range(len(l:anchor.before))
+        let l:j = l:at - len(l:anchor.before) + l:k
+        let l:score += l:j >= 0 && l:lines[l:j] ==# l:anchor.before[l:k]
+      endfor
+      for l:k in range(len(l:anchor.after))
+        let l:j = l:at + l:n + l:k
+        let l:score += l:j < len(l:lines) && l:lines[l:j] ==# l:anchor.after[l:k]
+      endfor
+      " More matching context wins; the distance only breaks ties
+      let l:score = l:score * 1000000 - abs(l:at + 1 - l:item.lnum)
+      if !l:lnum || l:score > l:best
+        let [l:lnum, l:best] = [l:at + 1, l:score]
+      endif
+    endfor
+    if !l:lnum
+      let l:item.type = 'W'
+      let l:item.user_data = {'anchor': l:saved}
+      let l:lost += 1
+    elseif l:lnum != l:item.lnum
+      if l:item.end_lnum > 0
+        let l:item.end_lnum += l:lnum - l:item.lnum
+      endif
+      let l:item.lnum = l:lnum
+      let l:moved += 1
+    endif
+  endfor
+  call setqflist([], 'r', {'id': s:list_id(), 'items': l:items})
+
   call review#open()
   redraw
   echo 'Review comments: ' . len(l:items)

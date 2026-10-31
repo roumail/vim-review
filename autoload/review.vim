@@ -1,22 +1,5 @@
-" Review comments live in their own quickfix list, titled 'Review', so they
-" don't mix with grep or diff results. Each entry is a path, a line (or
-" range) and the comment. Saved as `path:line: comment` or
-" `path:start-end: comment`, one per line, with each further line of a
-" multi-line comment after it, tab-indented. Beside it, `<file>.anchors` has
-" each comment's lines and a few around them, as they were (JSON, one per
-" line, not for reading). Loading finds the
-" lines again when the file has changed since; a comment whose lines are
-" gone stays at its saved line, marked W. The list's context is the scope
-" (e.g. the branch) its unsaved comments are from, '' once saved.
-"
-" What paths are relative to, which buffers take comments, where saves go and
-" the scope come from a provider (review#use()), e.g. git-extras' for git
-" work trees. Without one, or where it returns empty, they are files under
-" the current directory, saved in g:review_dir.
-
 let s:title = 'Review'
 let s:provider = {}
-" An anchor holds up to 20 of a comment's lines, and this many on either side
 let s:context = 2
 
 function! s:error(msg) abort
@@ -25,14 +8,6 @@ function! s:error(msg) abort
   echohl None
 endfunction
 
-" Public: sets the provider, a dict of functions, each optional; one that
-" returns empty falls back to the default:
-"   root()      the directory comment paths are relative to
-"   target()    the current buffer as {'path': relative to root()}, or
-"               {'error': why it takes no comments}
-"   save_dir()  the directory saves go in
-"   scope()     what the comments are on (e.g. the branch); unsaved ones
-"               from another scope warn
 function! review#use(provider) abort
   let s:provider = a:provider
 endfunction
@@ -50,8 +25,8 @@ function! s:default_target() abort
   return {'path': l:file[len(l:prefix):]}
 endfunction
 
-" One directory per root, named for its path, as 'undodir' names files
 function! s:default_save_dir() abort
+  " Named for the root's path, as 'undodir' names files
   return get(g:, 'review_dir', expand('~/.vim/review')) . '/'
         \ . substitute(fnamemodify(review#root(), ':p:h'), '/', '%', 'g')
 endfunction
@@ -60,23 +35,19 @@ function! s:default_scope() abort
   return ''
 endfunction
 
-" The provider's name() if it has one and it returns something, else the default
 function! s:call(name) abort
   let l:value = has_key(s:provider, a:name) ? s:provider[a:name]() : ''
   return empty(l:value) ? function('s:default_' . a:name)() : l:value
 endfunction
 
-" Public: the directory comment paths are relative to
 function! review#root() abort
   return s:call('root')
 endfunction
 
-" The root, ending in /
 function! s:prefix() abort
   return substitute(review#root(), '/\=$', '/', '')
 endfunction
 
-" The id of the 'Review' quickfix list, 0 if there is none
 function! s:find_id() abort
   for l:nr in range(1, getqflist({'nr': '$'}).nr)
     let l:info = getqflist({'nr': l:nr, 'title': 1, 'id': 0})
@@ -87,7 +58,6 @@ function! s:find_id() abort
   return 0
 endfunction
 
-" The id of the 'Review' quickfix list, created if missing
 function! s:list_id() abort
   let l:id = s:find_id()
   if l:id
@@ -102,7 +72,6 @@ function! s:items() abort
   return getqflist({'id': s:list_id(), 'items': 1}).items
 endfunction
 
-" Public: warns when the unsaved comments are from another scope than now
 function! review#check() abort
   let l:id = s:find_id()
   let l:scope = l:id ? getqflist({'id': l:id, 'context': 0}).context : ''
@@ -113,9 +82,6 @@ function! review#check() abort
   endif
 endfunction
 
-" The quickfix item (without text) for a comment on lines line1-line2 of the
-" current buffer, and its `path:line` or `path:start-end` label; {} when the
-" buffer can't take comments
 function! s:target(line1, line2) abort
   call review#check()
   let l:target = s:call('target')
@@ -131,18 +97,14 @@ function! s:target(line1, line2) abort
         \ 'label': l:target.path . ':' . a:line1 . (a:line1 == a:line2 ? '' : '-' . a:line2)}
 endfunction
 
-" Appends the item to the 'Review' list; returns its index in the list
 function! s:append(item) abort
   call setqflist([], 'a', {'id': s:list_id(), 'items': [a:item],
         \ 'context': s:call('scope')})
   return len(s:items()) - 1
 endfunction
 
-" Text typed at the prompt and left with <Esc>, by label, to start from when
-" commenting on those lines again
 let s:unsent = {}
 
-" Prompts for the comment unless text is given
 function! review#add(line1, line2, text) abort
   let l:target = s:target(a:line1, a:line2)
   if empty(l:target)
@@ -179,16 +141,11 @@ function! review#add(line1, line2, text) abort
   echo 'Review comments: ' . len(s:items())
 endfunction
 
-" Writes the comment in a buffer instead of at the prompt, for longer or
-" multi-line ones: a draft (roumail/vim-draft) below, starting with the text
-" if given, else with what was left at the :Comment prompt on these lines.
-" Closing it adds the comment last saved.
 function! review#edit(line1, line2, text) abort
   let l:target = s:target(a:line1, a:line2)
   if empty(l:target)
     return
   endif
-  " Else what was typed at the :Comment prompt on these lines and left
   let l:text = empty(a:text) ? get(s:unsent, l:target.label, '') : a:text
   silent! call remove(s:unsent, l:target.label)
   call s:draft(l:target.label, empty(l:text) ? [] : [l:text],
@@ -196,8 +153,6 @@ function! review#edit(line1, line2, text) abort
   startinsert!
 endfunction
 
-" A draft for the comment on label, below; closing it with text saved calls
-" OnClose(text)
 function! s:draft(label, lines, OnClose, verb) abort
   call roumail_draft#open('review://comment/' . a:label, a:lines, a:OnClose,
         \ {'split': 'belowright ' . get(g:, 'review_comment_height', 10) . 'new',
@@ -206,7 +161,6 @@ function! s:draft(label, lines, OnClose, verb) abort
   setlocal filetype=markdown
 endfunction
 
-" Adds the comment once its draft closes
 function! s:add_comment(item, text) abort
   call s:append(extend(copy(a:item), {'text': a:text}))
   echo 'Review comments: ' . len(s:items())
@@ -233,12 +187,11 @@ function! review#change(lnum, keys) abort
         \ function('s:change_comment', [l:item]), 'changes')
 endfunction
 
-" Replaces the comment once its draft closes; if it was deleted meanwhile,
-" adds it back changed rather than lose the text
 function! s:change_comment(item, text) abort
   let l:items = s:items()
   let l:i = index(l:items, a:item)
   if l:i < 0
+    " Deleted meanwhile: added back rather than lose the text
     call s:append(extend(copy(a:item), {'text': a:text}))
     echo 'Comment no longer in the list: added again, changed'
     return
@@ -290,13 +243,10 @@ function! review#list() abort
   return s:find_id() ? s:comments() : []
 endfunction
 
-" Public: empty the 'Review' list
 function! review#clear() abort
   call setqflist([], 'r', {'id': s:list_id(), 'items': [], 'context': ''})
 endfunction
 
-" The buffer's lines: the buffer's own if loaded (unsaved edits too), else
-" its file's; [] when it has neither
 function! s:lines(bufnr) abort
   if bufloaded(a:bufnr)
     return getbufline(a:bufnr, 1, '$')
@@ -305,13 +255,11 @@ function! s:lines(bufnr) abort
   return filereadable(l:file) ? readfile(l:file) : []
 endfunction
 
-" The save names (<time>.txt), newest first
 function! s:saves() abort
   return reverse(sort(map(glob(s:call('save_dir') . '/*.txt', 1, 1),
         \ 'fnamemodify(v:val, ":t")')))
 endfunction
 
-" The saves, newest first; files once the arg looks like a path
 function! review#complete_load(lead, cmdline, pos) abort
   if a:lead =~# '[/~.]'
     return getcompletion(a:lead, 'file')
@@ -345,6 +293,7 @@ function! review#save(file) abort
       endif
       let l:source = l:files[l:item.bufnr]
       let l:first = l:item.lnum - 1
+      " Up to 20 of the comment's lines
       let l:last = min([max([l:item.end_lnum, l:item.lnum]) - 1, l:first + 19])
       let l:anchor = l:first < 0 || l:first >= len(l:source) ? {} : {
             \ 'lines': l:source[l:first : l:last],
@@ -367,7 +316,6 @@ function! review#save(file) abort
   echo 'Saved ' . len(l:comments) . ' review comments to ' . fnamemodify(l:file, ':~')
 endfunction
 
-" Replaces the 'Review' list with the comments in the file
 function! review#load(file) abort
   let l:saves = s:saves()
   let l:file = index(l:saves, a:file) >= 0 ? s:call('save_dir') . '/' . a:file
@@ -396,7 +344,6 @@ function! review#load(file) abort
     endfor
   endif
   for l:line in readfile(l:file)
-    " A tab-indented line continues the previous comment
     if l:line[0] ==# "\t" && !empty(l:items)
       let l:items[-1].text .= "\n" . l:line[1:]
       continue
@@ -416,8 +363,6 @@ function! review#load(file) abort
   endfor
   call setqflist([], 'r', {'id': s:list_id(), 'items': l:items, 'context': ''})
 
-  " Each comment to where its anchored lines are now. One whose lines are gone
-  " keeps its line, is marked W and keeps its anchor for the next save.
   let l:items = s:items()
   let l:trimmed = {}
   let [l:moved, l:lost] = [0, 0]

@@ -1,15 +1,9 @@
-" vim-review: review comments on lines and ranges, collected in their own
-" quickfix list, saved and loaded back. Other plugins read them with
-" review#list() and can say where comments go with review#use() (git-extras
-" does, for git work trees). Commands and <Plug> mappings, and dd to delete
-" comments in the 'Review' list's window; no other keys are bound here.
-" Requires roumail/vim-draft, for :CommentDraft.
 if exists('g:loaded_review')
   finish
 endif
 let g:loaded_review = 1
 
-" Warns at startup when a required plugin isn't loaded (roumail/vim-requires)
+" roumail/vim-requires is optional
 try
   call roumail_requires#check('vim-review', {
         \ 'roumail/vim-draft': 'g:loaded_roumail_draft',
@@ -30,8 +24,8 @@ command! -nargs=? -complete=customlist,review#complete_load CommentsLoad call re
 " Empty the 'Review' list; saves are kept
 command! CommentsClear call review#clear()
 
-" They leave :Comment on the command line to finish, as vim-prompts' :Ai;
-" turning it into :CommentDraft takes the text to an editor
+" They leave :Comment on the command line to finish; turning it into
+" :CommentDraft takes the text to an editor
 nnoremap <Plug>(review-comment) :<C-u>Comment<Space>
 xnoremap <Plug>(review-comment) :Comment<Space>
 nnoremap <Plug>(review-comment-draft) <Cmd>CommentDraft<CR>

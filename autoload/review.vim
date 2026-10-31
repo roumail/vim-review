@@ -276,18 +276,14 @@ function! review#delete(line1, line2, keys) abort
   echo 'Review comments: ' . len(l:items)
 endfunction
 
-" Comments as {path, line, start_line?, body}, paths relative to the root
 function! s:comments() abort
   let l:prefix = s:prefix()
   let l:comments = []
   for l:item in s:items()
     let l:file = fnamemodify(bufname(l:item.bufnr), ':p')
     let l:comment = {'path': stridx(l:file, l:prefix) == 0 ? l:file[len(l:prefix):] : l:file,
-          \ 'line': l:item.lnum, 'body': l:item.text}
-    if get(l:item, 'end_lnum', 0) > l:item.lnum
-      let l:comment.start_line = l:item.lnum
-      let l:comment.line = l:item.end_lnum
-    endif
+          \ 'start': l:item.lnum, 'end': max([l:item.lnum, get(l:item, 'end_lnum', 0)]),
+          \ 'body': l:item.text}
     if l:item.type ==# 'W'
       let l:comment.orphaned = 1
     endif
@@ -296,10 +292,6 @@ function! s:comments() abort
   return l:comments
 endfunction
 
-" Public: the comments as {path, line, start_line?, body, orphaned?}, paths
-" relative to review#root(), for other plugins (e.g. to send them to an AI
-" agent). orphaned: its lines weren't found when it was loaded, so it is at
-" its saved line, which may be another one now.
 function! review#list() abort
   return s:find_id() ? s:comments() : []
 endfunction
@@ -458,8 +450,7 @@ function! review#save(file) abort
     let l:c = l:comments[l:i]
     let l:item = l:items[l:i]
     let l:body = split(l:c.body, "\n", 1)
-    let l:key = l:c.path . ':'
-          \ . (has_key(l:c, 'start_line') ? l:c.start_line . '-' : '') . l:c.line
+    let l:key = l:c.path . ':' . l:c.start . (l:c.end > l:c.start ? '-' . l:c.end : '')
     call add(l:lines, l:key . ': ' . l:body[0])
     call extend(l:lines, map(l:body[1:], '"\t" . v:val'))
     " An orphaned comment keeps the anchor it was loaded with: its lines
@@ -517,10 +508,6 @@ function! review#load(file) abort
     " A tab-indented line continues the previous comment
     if l:line[0] ==# "\t" && !empty(l:items)
       let l:items[-1].text .= "\n" . l:line[1:]
-      continue
-    endif
-    " An anchor inline, as saves had them before <file>.anchors
-    if l:line =~# '^@anchor '
       continue
     endif
     let l:m = matchlist(l:line, '^\(.\{-}\):\(\d\+\)\%(-\(\d\+\)\)\=: \(.*\)$')

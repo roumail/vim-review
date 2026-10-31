@@ -55,9 +55,10 @@ xmap <leader>cc <Plug>(review-comment)
 
 | Function | What it does |
 | --- | --- |
-| `review#list()` | The comments as `{path, line, start_line?, body, orphaned?}`: `start_line` for a range, `orphaned` when its lines weren't found on load. |
+| `review#list()` | The comments as `{path, start, end, body, orphaned?}`: `start` and `end` are the first and last line, the same for a single line; `orphaned` when its lines weren't found on load. |
 | `review#root()` | The directory those paths are relative to. |
 | `review#clear()` | Empty the `Review` list. |
+| `review#load([file])` | Replace the `Review` list with the comments in `file`, else the latest save, as `:CommentsLoad`. |
 | `review#check()` | Warn when the unsaved comments are from another scope (e.g. branch) than now. |
 | `review#use(provider)` | Say where comments go, for a kind of project. |
 

@@ -1,11 +1,8 @@
 # vim-review
 
 Review comments in Vim, on a line or a range of a file, collected in their own
-quickfix list, saved and loaded back. Other plugins can
-read them, e.g. to send them to an AI agent
-([vim-prompts](https://github.com/roumail/vim-prompts)' `#comments`) or post
-them as a pull request review
-([git-extras](https://github.com/roumail/git-extras)' `:CommentsSubmit`).
+quickfix list, saved and loaded back. Other plugins can read them
+([For other plugins](#for-other-plugins)).
 
 Comments collect in a quickfix list titled `Review`, so they don't mix with
 grep or diff results.
@@ -21,8 +18,7 @@ grep or diff results.
 
 Paths are relative to the current directory, and saves go in a directory per
 current directory under `g:review_dir` (default `~/.vim/review`), unless a
-provider says otherwise. With fugitive-extras, paths are relative to the repo root
-and saves are per branch in the git dir.
+[provider](#for-other-plugins) says otherwise.
 
 ## Anchors
 

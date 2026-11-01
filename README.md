@@ -60,10 +60,11 @@ xmap <leader>cc <Plug>(review-comment)
 | `review#clear()` | Empty the `Review` list. |
 | `review#load([file])` | Replace the `Review` list with the comments in `file`, else the latest save, as `:CommentsLoad`. |
 | `review#check()` | Warn when the unsaved comments are from another scope (e.g. branch) than now. |
-| `review#use(provider)` | Say where comments go, for a kind of project. |
 
-A provider is a dict of functions, each optional; one that returns empty falls
-back to the default:
+To say where comments go for a kind of project, a plugin sets `g:review_provider`
+when it loads, to a dict of functions, each optional; one that returns empty
+falls back to the default. It is read when a comment is made, so plugins can
+load in any order:
 
 | Key | Returns | Default |
 | --- | --- | --- |
@@ -72,8 +73,8 @@ back to the default:
 | `save_dir` | Where saves go. | Under `g:review_dir`, one per `root`. |
 | `scope` | What the comments are on, e.g. the branch. Comments left unsaved from another scope warn. | None. |
 
-fugitive-extras' provider is
-[`autoload/fugitive_extras/comments.vim`](https://github.com/roumail/fugitive-extras/blob/main/autoload/fugitive_extras/comments.vim).
+fugitive-extras sets one in
+[`plugin/fugitive_extras.vim`](https://github.com/roumail/fugitive-extras/blob/main/plugin/fugitive_extras.vim).
 
 ## Install
 

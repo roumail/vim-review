@@ -1,15 +1,10 @@
 let s:title = 'Review'
-let s:provider = {}
 let s:context = 2
 
 function! s:error(msg) abort
   echohl ErrorMsg
   echomsg 'vim-review: ' . a:msg
   echohl None
-endfunction
-
-function! review#use(provider) abort
-  let s:provider = a:provider
 endfunction
 
 function! s:default_root() abort
@@ -36,7 +31,8 @@ function! s:default_scope() abort
 endfunction
 
 function! s:call(name) abort
-  let l:value = has_key(s:provider, a:name) ? s:provider[a:name]() : ''
+  let l:provider = get(g:, 'review_provider', {})
+  let l:value = has_key(l:provider, a:name) ? l:provider[a:name]() : ''
   return empty(l:value) ? function('s:default_' . a:name)() : l:value
 endfunction
 

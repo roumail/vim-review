@@ -21,7 +21,7 @@ grep or diff results.
 
 Paths are relative to the current directory, and saves go in a directory per
 current directory under `g:review_dir` (default `~/.vim/review`), unless a
-provider says otherwise. With git-extras, paths are relative to the repo root
+provider says otherwise. With fugitive-extras, paths are relative to the repo root
 and saves are per branch in the git dir.
 
 ## Anchors
@@ -72,8 +72,8 @@ back to the default:
 | `save_dir` | Where saves go. | Under `g:review_dir`, one per `root`. |
 | `scope` | What the comments are on, e.g. the branch. Comments left unsaved from another scope warn. | None. |
 
-git-extras' provider is
-[`autoload/git_extras/comments.vim`](https://github.com/roumail/git-extras/blob/main/autoload/git_extras/comments.vim).
+fugitive-extras' provider is
+[`autoload/fugitive_extras/comments.vim`](https://github.com/roumail/fugitive-extras/blob/main/autoload/fugitive_extras/comments.vim).
 
 ## Install
 

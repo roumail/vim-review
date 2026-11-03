@@ -202,23 +202,7 @@ function! review#open() abort
   copen
 endfunction
 
-function! review#delete(line1, line2, keys) abort
-  let l:id = s:shown_list_id()
-  if !l:id
-    execute 'normal!' a:keys
-    return
-  endif
-  let l:items = s:items()
-  if empty(l:items)
-    return
-  endif
-  call remove(l:items, a:line1 - 1, min([a:line2, len(l:items)]) - 1)
-  call setqflist([], 'r', {'id': l:id, 'items': l:items,
-        \ 'idx': max([1, min([a:line1, len(l:items)])])})
-  call cursor(a:line1, 1)
-  echo 'Review comments: ' . len(l:items)
-endfunction
-
+" Comments as {path, line, start_line?, body}, paths relative to the root
 function! s:comments() abort
   let l:prefix = s:prefix()
   let l:comments = []

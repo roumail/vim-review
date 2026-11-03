@@ -146,7 +146,6 @@ function! review#edit(line1, line2, text) abort
   silent! call remove(s:unsent, l:target.label)
   call s:draft(l:target.label, empty(l:text) ? [] : [l:text],
         \ function('s:add_comment', [l:target.item]), 'adds')
-  startinsert!
 endfunction
 
 function! s:draft(label, lines, OnClose, verb) abort

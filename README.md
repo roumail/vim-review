@@ -1,90 +1,41 @@
 # vim-review
 
-Review comments in Vim, on a line or a range of a file, collected in their own
-quickfix list, saved and loaded back. Other plugins can read them
-([For other plugins](#for-other-plugins)).
+The format review comments are kept in, as files, for the plugins that write
+and read them: [fugitive-extras](https://github.com/roumail/fugitive-extras)
+saves and loads your comments in it, and
+[vim-prompts](https://github.com/roumail/vim-prompts) has the agent write its
+comments in it. It has no commands.
 
-Comments collect in a quickfix list titled `Review`, so they don't mix with
-grep or diff results.
-
-| Command | `<Plug>` mapping | What it does |
-| --- | --- | --- |
-| `:[range]Comment [text]` | `<Plug>(review-comment)` (normal and visual), which leaves `:Comment ` on the command line to finish | Add a comment on the line or range; prompts unless `text` is given. Leaving the prompt with `<Esc>` keeps what you typed: `:Comment` or `:CommentDraft` on the same lines goes on from it. |
-| `:[range]CommentDraft [text]` | `<Plug>(review-comment-draft)` (normal and visual) | Write the comment in a markdown buffer split below (`g:review_comment_height`, default 10), starting with `text` if given, else with what you left at the `:Comment` prompt on those lines, for longer or multi-line comments. As a git commit message: `:w` saves, closing the buffer (`:wq`, or `:q` after `:w`) adds the comment last saved, and an empty one or `:q!` before any `:w` drops it. Closing it never quits Vim, even with `:only`. |
-| `:Comments` | | Open the `Review` list. In it, `c` opens the comment on the line in a draft, all of it, to read or change: saved and closed, it replaces the comment. Deleting one is up to a quickfix list's `dd`, as [qf-tools](https://github.com/roumail/qf-tools) binds it. |
-| `:CommentsSave [file]` | | Write the comments, one per line, as `path:line: comment` or `path:start-end: comment`, the further lines of a multi-line comment after it, tab-indented. Its [anchors](#anchors) go in `<file>.anchors` beside it, so the file reads as plain comments. Without `file`, each save is a new file named for the time, `<YYYYmmdd-HHMMSS>.txt`, in the save directory. |
-| `:CommentsLoad [file]` | | Replace the `Review` list with the comments in the file, each moved to where its lines are now; without `file`, the latest save. `<Tab>` lists the saves, newest first, then files. |
-| `:CommentsClear` | | Empty the `Review` list, as quitting Vim would. Saves are kept, so `:CommentsLoad` brings them back. |
-
-Paths are relative to the current directory. Saves go where
-[vim-draft](https://github.com/roumail/vim-draft) keeps plugins' files
-(`roumail_draft#dir()`): in the git directory in a repository, else in its
-save directory. They are in `vim-review/`, one directory per
-[scope](#for-other-plugins), or, with none, one per current directory. With
-[fugitive-extras](https://github.com/roumail/fugitive-extras), the scope is
-the branch, so saves in a repository are kept per branch.
-
-## Anchors
-
-While a file is open, its comments move with your edits, as quickfix entries
-do. A save can be loaded after the file changed outside Vim, though (a `git
-pull`, a rebase, an agent's edit), so each comment is saved with an anchor:
-a line of JSON in `<file>.anchors` with its lines (up to 20) and the 2 on either side.
-
-`:CommentsLoad` looks for those lines, ignoring indentation, and moves the
-comment to them. Where they appear more than once, it takes the place with
-the most matching lines around it, then the nearest to the saved line. A
-comment whose lines are gone stays at its saved line, marked `W` in
-`:Comments`, and keeps its anchor through later saves, so it is found again if
-its lines come back.
-
-To take a comment you're typing to an editor, change `Comment` to
-`CommentDraft` on the command line (`<C-b>` goes to its start) and press
-Enter: the draft starts with your text. A command line left with `<Esc>` is
-in the history, so `:<Up>` gets it back after you look something up.
-
-Apart from `c` in the `Review` list, no keys are bound; bind the `<Plug>`
-mappings yourself, for example:
-
-```vim
-nmap <leader>cc <Plug>(review-comment)
-xmap <leader>cc <Plug>(review-comment)
+```
+src/app.py:12: could you check the None case here?
+src/app.py:20-24: is this loop needed?
+	It seems to repeat line 8.
 ```
 
-## For other plugins
+One comment per line, `path:line: text` or `path:start-end: text`, the
+further lines of a multi-line comment after it, tab-indented. Paths are
+relative to a root the plugin using it decides (fugitive-extras: the work
+tree).
+
+## Functions
+
+A comment is `{path, start, end, body}`: `start` and `end` are the first and
+last line, the same for a single line, and `body` has its lines joined by
+newlines.
 
 | Function | What it does |
 | --- | --- |
-| `review#list()` | The comments as `{path, start, end, body, orphaned?}`: `start` and `end` are the first and last line, the same for a single line; `orphaned` when its lines weren't found on load. |
-| `review#root()` | The directory those paths are relative to. |
-| `review#clear()` | Empty the `Review` list. |
-| `review#load([file])` | Replace the `Review` list with the comments in `file`, else the latest save, as `:CommentsLoad`. |
-| `review#check()` | Warn when the unsaved comments are from another scope (e.g. branch) than now. |
-
-To say what comments are on for a kind of project, a plugin sets `g:review_provider`
-when it loads, to a dict of functions, each optional; one that returns empty
-falls back to the default. It is read when a comment is made, so plugins can
-load in any order:
-
-| Key | Returns | Default |
-| --- | --- | --- |
-| `root` | The directory comment paths are relative to. | The current directory. |
-| `target` | The current buffer as `{'path': ...}` relative to `root`, or `{'error': ...}` saying why it takes no comments. | A file under `root`. |
-| `scope` | What the comments are on, e.g. the branch. Saves are kept per scope, and comments left unsaved from another scope warn. | None. |
-
-fugitive-extras sets one in
-[`plugin/fugitive_extras.vim`](https://github.com/roumail/fugitive-extras/blob/main/plugin/fugitive_extras.vim).
+| `review#read(file)` | The comments in `file` as `{comments, skipped}`: `skipped` counts the non-blank lines that aren't in the format, which are left out. |
+| `review#write(file, comments)` | Write `comments` to `file`, replacing it. |
 
 ## Install
 
-Requires [vim-draft](https://github.com/roumail/vim-draft): the buffer
-`:CommentDraft` writes in, and where saves are kept.
-
 ```vim
-Plug 'roumail/vim-draft'
-Plug 'roumail/vim-requires'  " optional: the startup warning
 Plug 'roumail/vim-review'
 ```
 
-With [vim-requires](https://github.com/roumail/vim-requires), Vim shows
-`vim-review: requires …` at startup when it isn't loaded.
+## Tests
+
+```sh
+vim -Nu NONE -i NONE -Es -S test/run.vim
+```

@@ -20,11 +20,13 @@ function! s:default_target() abort
   return {'path': l:file[len(l:prefix):]}
 endfunction
 
-function! s:default_save_dir() abort
-  " With no git dir: vim-draft's save directory. Named for the root's path,
-  " as 'undodir' names files
-  return roumail_draft#dir('', 'vim-review/'
-        \ . substitute(fnamemodify(review#root(), ':p:h'), '/', '%', 'g'))
+" Where vim-draft keeps vim-review's files (in the git dir in a repository):
+" one directory per scope, e.g. per branch, else per root, named for its path
+" as 'undodir' names files
+function! s:save_dir() abort
+  let l:scope = s:call('scope')
+  return roumail_draft#dir('vim-review/' . (empty(l:scope)
+        \ ? substitute(fnamemodify(review#root(), ':p:h'), '/', '%', 'g') : l:scope))
 endfunction
 
 function! s:default_scope() abort
@@ -236,7 +238,7 @@ function! s:lines(bufnr) abort
 endfunction
 
 function! s:saves() abort
-  return reverse(sort(map(glob(s:call('save_dir') . '/*.txt', 1, 1),
+  return reverse(sort(map(glob(s:save_dir() . '/*.txt', 1, 1),
         \ 'fnamemodify(v:val, ":t")')))
 endfunction
 
@@ -250,7 +252,7 @@ endfunction
 
 function! review#save(file) abort
   " Named for the time, so they sort
-  let l:file = empty(a:file) ? s:call('save_dir') . '/' . strftime('%Y%m%d-%H%M%S') . '.txt'
+  let l:file = empty(a:file) ? s:save_dir() . '/' . strftime('%Y%m%d-%H%M%S') . '.txt'
         \ : fnamemodify(a:file, ':p')
   let l:items = s:items()
   let l:comments = s:comments()
@@ -298,9 +300,9 @@ endfunction
 
 function! review#load(file) abort
   let l:saves = s:saves()
-  let l:file = index(l:saves, a:file) >= 0 ? s:call('save_dir') . '/' . a:file
+  let l:file = index(l:saves, a:file) >= 0 ? s:save_dir() . '/' . a:file
         \ : !empty(a:file) ? fnamemodify(a:file, ':p')
-        \ : empty(l:saves) ? '' : s:call('save_dir') . '/' . l:saves[0]
+        \ : empty(l:saves) ? '' : s:save_dir() . '/' . l:saves[0]
   if empty(l:file)
     let l:scope = s:call('scope')
     call s:error('no saved comments' . (empty(l:scope) ? '' : ' for ' . l:scope))

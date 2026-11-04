@@ -16,13 +16,13 @@ grep or diff results.
 | `:CommentsLoad [file]` | | Replace the `Review` list with the comments in the file, each moved to where its lines are now; without `file`, the latest save. `<Tab>` lists the saves, newest first, then files. |
 | `:CommentsClear` | | Empty the `Review` list, as quitting Vim would. Saves are kept, so `:CommentsLoad` brings them back. |
 
-Paths are relative to the current directory, and saves go in a directory per
-current directory in `vim-review/` in
-[vim-draft](https://github.com/roumail/vim-draft)'s save directory
-(`g:roumail_draft_save_dir`, `~/scratch`), unless a
-[provider](#for-other-plugins) says otherwise. With
-[fugitive-extras](https://github.com/roumail/fugitive-extras), saves in a git
-repository go in its git directory, one per branch.
+Paths are relative to the current directory. Saves go where
+[vim-draft](https://github.com/roumail/vim-draft) keeps plugins' files
+(`roumail_draft#dir()`): in the git directory in a repository, else in its
+save directory. They are in `vim-review/`, one directory per
+[scope](#for-other-plugins), or, with none, one per current directory. With
+[fugitive-extras](https://github.com/roumail/fugitive-extras), the scope is
+the branch, so saves in a repository are kept per branch.
 
 ## Anchors
 
@@ -61,7 +61,7 @@ xmap <leader>cc <Plug>(review-comment)
 | `review#load([file])` | Replace the `Review` list with the comments in `file`, else the latest save, as `:CommentsLoad`. |
 | `review#check()` | Warn when the unsaved comments are from another scope (e.g. branch) than now. |
 
-To say where comments go for a kind of project, a plugin sets `g:review_provider`
+To say what comments are on for a kind of project, a plugin sets `g:review_provider`
 when it loads, to a dict of functions, each optional; one that returns empty
 falls back to the default. It is read when a comment is made, so plugins can
 load in any order:
@@ -70,8 +70,7 @@ load in any order:
 | --- | --- | --- |
 | `root` | The directory comment paths are relative to. | The current directory. |
 | `target` | The current buffer as `{'path': ...}` relative to `root`, or `{'error': ...}` saying why it takes no comments. | A file under `root`. |
-| `save_dir` | Where saves go. | In vim-draft's save directory, one per `root`. |
-| `scope` | What the comments are on, e.g. the branch. Comments left unsaved from another scope warn. | None. |
+| `scope` | What the comments are on, e.g. the branch. Saves are kept per scope, and comments left unsaved from another scope warn. | None. |
 
 fugitive-extras sets one in
 [`plugin/fugitive_extras.vim`](https://github.com/roumail/fugitive-extras/blob/main/plugin/fugitive_extras.vim).
@@ -79,7 +78,7 @@ fugitive-extras sets one in
 ## Install
 
 Requires [vim-draft](https://github.com/roumail/vim-draft): the buffer
-`:CommentDraft` writes in.
+`:CommentDraft` writes in, and where saves are kept.
 
 ```vim
 Plug 'roumail/vim-draft'

@@ -17,8 +17,9 @@ grep or diff results.
 | `:CommentsClear` | | Empty the `Review` list, as quitting Vim would. Saves are kept, so `:CommentsLoad` brings them back. |
 
 Paths are relative to the current directory, and saves go in a directory per
-current directory under `g:review_dir` (default `vim-review` in
-`$XDG_STATE_HOME`, else `~/.local/state`), unless a
+current directory in `vim-review/` in
+[vim-draft](https://github.com/roumail/vim-draft)'s save directory
+(`g:roumail_draft_save_dir`, `~/scratch`), unless a
 [provider](#for-other-plugins) says otherwise. With
 [fugitive-extras](https://github.com/roumail/fugitive-extras), saves in a git
 repository go in its git directory, one per branch.
@@ -69,7 +70,7 @@ load in any order:
 | --- | --- | --- |
 | `root` | The directory comment paths are relative to. | The current directory. |
 | `target` | The current buffer as `{'path': ...}` relative to `root`, or `{'error': ...}` saying why it takes no comments. | A file under `root`. |
-| `save_dir` | Where saves go. | Under `g:review_dir`, one per `root`. |
+| `save_dir` | Where saves go. | In vim-draft's save directory, one per `root`. |
 | `scope` | What the comments are on, e.g. the branch. Comments left unsaved from another scope warn. | None. |
 
 fugitive-extras sets one in

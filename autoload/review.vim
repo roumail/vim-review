@@ -22,7 +22,8 @@ endfunction
 
 function! s:default_save_dir() abort
   " Named for the root's path, as 'undodir' names files
-  return get(g:, 'review_dir', expand('~/.vim/review')) . '/'
+  return get(g:, 'review_dir', (empty($XDG_STATE_HOME) ? expand('~/.local/state')
+        \   : $XDG_STATE_HOME) . '/vim-review') . '/'
         \ . substitute(fnamemodify(review#root(), ':p:h'), '/', '%', 'g')
 endfunction
 

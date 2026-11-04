@@ -17,8 +17,11 @@ grep or diff results.
 | `:CommentsClear` | | Empty the `Review` list, as quitting Vim would. Saves are kept, so `:CommentsLoad` brings them back. |
 
 Paths are relative to the current directory, and saves go in a directory per
-current directory under `g:review_dir` (default `~/.vim/review`), unless a
-[provider](#for-other-plugins) says otherwise.
+current directory under `g:review_dir` (default `vim-review` in
+`$XDG_STATE_HOME`, else `~/.local/state`), unless a
+[provider](#for-other-plugins) says otherwise. With
+[fugitive-extras](https://github.com/roumail/fugitive-extras), saves in a git
+repository go in its git directory, one per branch.
 
 ## Anchors
 
